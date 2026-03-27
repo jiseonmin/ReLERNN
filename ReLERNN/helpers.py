@@ -592,8 +592,8 @@ def plotResults(resultsFile,saveas):
     fig,axes = plt.subplots(2,1)
     plt.subplots_adjust(hspace=0.5)
 
-    predictions = np.array([float(Y) for Y in results["predictions"]])
-    realValues = np.array([float(X) for X in results["Y_test"]])
+    predictions = np.array(results["predictions"]).flatten()
+    realValues = np.array(results["Y_test"]).flatten()
 
     r_2 = round((np.corrcoef(predictions,realValues)[0,1])**2,5)
 
