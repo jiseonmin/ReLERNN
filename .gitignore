@@ -107,4 +107,7 @@ venv.bak/
 # vim
 *.swp
 *.swo
+CLAUDE.md
 baseline_results/
+experiments/
+examples/example_output/
