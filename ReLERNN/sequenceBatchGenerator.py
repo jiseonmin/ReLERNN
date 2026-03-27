@@ -4,10 +4,10 @@ Authors: Jared Galloway, Jeff Adrion
 
 from ReLERNN.imports import *
 
-class SequenceBatchGenerator(tf.keras.utils.Sequence):
+class SequenceBatchGenerator(keras.utils.Sequence):
 
     '''
-    This class, SequenceBatchGenerator, extends tf.keras.utils.Sequence.
+    This class, SequenceBatchGenerator, extends keras.utils.Sequence.
     So as to multithread the batch preparation in tandum with network training
     for maximum effeciency on the hardware provided.
 
@@ -48,6 +48,7 @@ class SequenceBatchGenerator(tf.keras.utils.Sequence):
             seed = None
             ):
 
+        super().__init__()
         self.treesDirectory = treesDirectory
         self.targetNormalization = targetNormalization
         infoFilename = os.path.join(self.treesDirectory,"info.p")
@@ -90,7 +91,7 @@ class SequenceBatchGenerator(tf.keras.utils.Sequence):
         this problem is NP, so here we use a nearest neighbors approx.  it's not perfect, but it's fast and generally performs ok.
         assumes your input matrix is a numpy array'''
 
-        mb = NearestNeighbors(len(amat), metric='manhattan').fit(amat)
+        mb = NearestNeighbors(n_neighbors=len(amat), metric='manhattan').fit(amat)
         v = mb.kneighbors(amat)
         smallest = np.argmin(v[0].sum(axis=1))
         return amat[v[1][smallest]]
@@ -330,10 +331,10 @@ class SequenceBatchGenerator(tf.keras.utils.Sequence):
                 haps=np.where(haps > 1.0, self.padVal, haps)
                 haps=np.where(haps == 1.0, self.derVal, haps)
 
-                return [haps,pos], targets
+                return (haps,pos), targets
 
 
-class VCFBatchGenerator(tf.keras.utils.Sequence):
+class VCFBatchGenerator(keras.utils.Sequence):
     """Basically same as SequenceBatchGenerator Class except for VCF files"""
     def __init__(self,
             INFO,
@@ -357,6 +358,7 @@ class VCFBatchGenerator(tf.keras.utils.Sequence):
             seed=None
             ):
 
+        super().__init__()
         self.INFO=INFO
         self.CHROM=CHROM
         self.winLen=winLen
@@ -479,10 +481,10 @@ class VCFBatchGenerator(tf.keras.utils.Sequence):
             haps=np.where(haps > 1.0, self.padVal, haps)
             haps=np.where(haps == 1.0, self.derVal, haps)
 
-            return [haps,pos], nSNPs
+            return (haps,pos), nSNPs
 
 
-class POOLBatchGenerator(tf.keras.utils.Sequence):
+class POOLBatchGenerator(keras.utils.Sequence):
     """Basically same as SequenceBatchGenerator Class except for POOL files"""
     def __init__(self,
             INFO,
@@ -506,6 +508,7 @@ class POOLBatchGenerator(tf.keras.utils.Sequence):
             seed = None
             ):
 
+        super().__init__()
         self.INFO=INFO
         self.normType = normType
         self.CHROM=CHROM
