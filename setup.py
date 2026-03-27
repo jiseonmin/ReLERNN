@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(name='ReLERNN',
-      version='0.2',
+      version='1.0.1',
       requires_python="<3.11",
       description='ReLERNN: Recombination Landscape Estimation using Recurrent Neural Networks',
       long_description=long_description,
