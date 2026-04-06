@@ -45,10 +45,12 @@ class SequenceBatchGenerator(keras.utils.Sequence):
             seqD = None,
             maf = None,
             hotspots = False,
-            seed = None
+            seed = None,
+            workers = 1,
+            use_multiprocessing = False
             ):
 
-        super().__init__()
+        super().__init__(workers=workers, use_multiprocessing=use_multiprocessing)
         self.treesDirectory = treesDirectory
         self.targetNormalization = targetNormalization
         infoFilename = os.path.join(self.treesDirectory,"info.p")
