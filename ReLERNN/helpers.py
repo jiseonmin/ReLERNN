@@ -309,7 +309,6 @@ def runModels(ModelFuncPointer,
             TestGenerator,
             resultsFile=None,
             numEpochs=10,
-            epochSteps=100,
             validationSteps=1,
             network=None,
             gpuID = 0):
