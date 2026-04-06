@@ -347,7 +347,9 @@ def runModels(ModelFuncPointer,
         steps_per_epoch=epochSteps,
         epochs=numEpochs,
         validation_data=ValidationGenerator,
-        callbacks=callbacks_list)
+        callbacks=callbacks_list,
+        workers=nCPU,
+        use_multiprocessing=nCPU > 1)
 
     # Save the trained model
     if(network != None):
