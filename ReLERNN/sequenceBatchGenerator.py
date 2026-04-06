@@ -45,12 +45,10 @@ class SequenceBatchGenerator(keras.utils.Sequence):
             seqD = None,
             maf = None,
             hotspots = False,
-            seed = None,
-            workers = 1,
-            use_multiprocessing = False
+            seed = None
             ):
 
-        super().__init__(workers=workers, use_multiprocessing=use_multiprocessing)
+        super().__init__()
         self.treesDirectory = treesDirectory
         self.targetNormalization = targetNormalization
         infoFilename = os.path.join(self.treesDirectory,"info.p")
@@ -84,17 +82,6 @@ class SequenceBatchGenerator(keras.utils.Sequence):
                 self.normalizedTargets = self.normalizeTargetsBinaryClass()
             else:
                 self.normalizedTargets = self.normalizeTargets()
-
-        # Preload all haplotype and position arrays into RAM so that
-        # __data_generation never touches the filesystem.
-        numReps = self.infoDir["numReps"]
-        self._haps_cache = [None] * numReps
-        self._pos_cache = [None] * numReps
-        for i in range(numReps):
-            self._haps_cache[i] = np.load(
-                os.path.join(self.treesDirectory, str(i) + "_haps.npy"))
-            self._pos_cache[i] = np.load(
-                os.path.join(self.treesDirectory, str(i) + "_pos.npy"))
 
         if(shuffleExamples):
             np.random.shuffle(self.indices)
@@ -296,8 +283,12 @@ class SequenceBatchGenerator(keras.utils.Sequence):
         haps = []
         pos = []
         for treeIndex in batchTreeIndices:
-            haps.append(self._haps_cache[treeIndex].copy())
-            pos.append(self._pos_cache[treeIndex].copy())
+            Hfilepath = os.path.join(self.treesDirectory,str(treeIndex) + "_haps.npy")
+            Pfilepath = os.path.join(self.treesDirectory,str(treeIndex) + "_pos.npy")
+            H = np.load(Hfilepath)
+            P = np.load(Pfilepath)
+            haps.append(H)
+            pos.append(P)
         respectiveNormalizedTargets = [[t] for t in self.normalizedTargets[batchTreeIndices]]
         targets = np.array(respectiveNormalizedTargets)
 

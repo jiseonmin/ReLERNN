@@ -89,9 +89,7 @@ def main():
         'posPadVal':0,
         'seqD':args.seqD,
         'maf':args.maf,
-        'seed':args.seed,
-        'workers':nProc,
-        'use_multiprocessing':nProc > 1
+        'seed':args.seed
               }
 
 

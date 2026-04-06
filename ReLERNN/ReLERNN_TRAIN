@@ -77,9 +77,7 @@ def main():
         'realLinePos':True,
         'posPadVal':0,
         'seqD':None,
-        'seed':args.seed,
-        'workers':nProc,
-        'use_multiprocessing':nProc > 1
+        'seed':args.seed
               }
 
 
