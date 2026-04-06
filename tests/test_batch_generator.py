@@ -214,3 +214,31 @@ class TestGetItem:
             for i in range(len(gen)):
                 x, y = gen.__getitem__(i)
                 assert x[0].shape[0] > 0
+
+
+# ---------------------------------------------------------------------------
+# to_dataset
+# ---------------------------------------------------------------------------
+
+class TestToDataset:
+    def test_returns_tf_dataset(self):
+        import tensorflow as tf
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = _make_generator(tmpdir, n=64, nSamps=10, maxLen=50)
+            ds = gen.to_dataset(repeat=False)
+            assert isinstance(ds, tf.data.Dataset)
+
+    def test_batch_shapes(self):
+        import tensorflow as tf
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = _make_generator(tmpdir, n=64, nSamps=10, maxLen=50,
+                                  frameWidth=0)
+            ds = gen.to_dataset(repeat=False)
+            # Take the first batch and verify shapes
+            for (haps, pos), targets in ds.take(1):
+                assert haps.ndim == 3
+                assert pos.ndim == 2
+                assert targets.ndim == 2
+                assert haps.shape[0] == pos.shape[0] == targets.shape[0]
+                assert haps.shape[1] == 50
+                assert pos.shape[1] == 50
