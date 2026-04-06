@@ -309,10 +309,8 @@ def runModels(ModelFuncPointer,
             TestGenerator,
             resultsFile=None,
             numEpochs=10,
-            epochSteps=100,
             validationSteps=1,
             network=None,
-            nCPU = 1,
             gpuID = 0):
 
 
@@ -343,10 +341,11 @@ def runModels(ModelFuncPointer,
             TerminateOnNaN()
             ]
 
-    history = model.fit(TrainGenerator,
-        steps_per_epoch=epochSteps,
+    history = model.fit(TrainGenerator.to_dataset(repeat=True),
+        steps_per_epoch=TrainGenerator.steps_per_epoch,
         epochs=numEpochs,
-        validation_data=ValidationGenerator,
+        validation_data=ValidationGenerator.to_dataset(repeat=True),
+        validation_steps=ValidationGenerator.steps_per_epoch,
         callbacks=callbacks_list)
 
     # Save the trained model

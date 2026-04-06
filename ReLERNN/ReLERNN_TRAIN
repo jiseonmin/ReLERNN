@@ -78,8 +78,6 @@ def main():
         'posPadVal':0,
         'seqD':None,
         'seed':args.seed,
-        'workers':nProc,
-        'use_multiprocessing':nProc > 1
               }
 
 
@@ -117,7 +115,6 @@ def main():
             network=modelSave,
             numEpochs=args.nEpochs,
             validationSteps=args.nValSteps,
-            nCPU=nProc,
             gpuID=args.gpuID)
 
 
