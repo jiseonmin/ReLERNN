@@ -277,6 +277,24 @@ class SequenceBatchGenerator:
     def to_dataset(self, repeat=True):
         """Return a tf.data.Dataset for use with model.fit().
 
+        Uses a two-stage pipeline with tf.data.cache() for lazy per-sample RAM
+        caching (standard/non-pool-seq path only):
+
+        Stage 1: index → tf.py_function(load + pad single sample) → cache()
+            Epoch 1 loads lazily from disk as each sample is first accessed.
+            All subsequent epochs are served entirely from RAM with zero disk I/O.
+
+        Stage 2: [repeat] → shuffle → batch → set_shape → prefetch
+
+        Note: shuffleInds (per-individual column shuffle) is applied before
+        caching, so it is frozen after epoch 1.  This is an acceptable
+        trade-off for eliminating repeated disk reads on HPC shared filesystems
+        (Lustre, GPFS, NFS).
+
+        For the pool-seq path (seqD != None), caching is skipped because
+        padAlleleFqs involves stochastic per-epoch resampling that must vary
+        between epochs.
+
         Args:
             repeat: If True (default), the dataset repeats indefinitely so
                     Keras can iterate over it across epochs.
@@ -287,22 +305,24 @@ class SequenceBatchGenerator:
         numReps = self.infoDir["numReps"]
         all_indices = np.arange(numReps)
 
-        ds = tf.data.Dataset.from_tensor_slices(all_indices)
-
-        if self.shuffleExamples:
-            ds = ds.shuffle(buffer_size=numReps, reshuffle_each_iteration=True)
-
-        ds = ds.batch(self.batch_size)
-
         if self.seqD:
-            # Pool-seq path: __data_generation returns (z, targets)
-            # where z is a single 3-D array.
+            # ------------------------------------------------------------------
+            # Pool-seq path: stochastic resampling per epoch — skip cache().
+            # Keep the original batch-level tf.py_function approach.
+            # ------------------------------------------------------------------
+            ds = tf.data.Dataset.from_tensor_slices(all_indices)
+
+            if self.shuffleExamples:
+                ds = ds.shuffle(buffer_size=numReps, reshuffle_each_iteration=True)
+
+            ds = ds.batch(self.batch_size)
+
             def _py_gen_pool(batch_indices):
                 batch_indices = batch_indices.numpy().astype(np.int64)
                 z, targets = self.__data_generation(batch_indices)
                 return z, targets
 
-            def _map_fn(batch_indices):
+            def _map_fn_pool(batch_indices):
                 z, targets = tf.py_function(
                     func=_py_gen_pool,
                     inp=[batch_indices],
@@ -311,31 +331,92 @@ class SequenceBatchGenerator:
                 z.set_shape([None, None, None])  # (batch, numSNPs+2*frameWidth, 2)
                 targets.set_shape([None, 1])     # (batch, 1)
                 return z, targets
-        else:
-            # Standard path: __data_generation returns ((haps, pos), targets).
-            def _py_gen(batch_indices):
-                batch_indices = batch_indices.numpy().astype(np.int64)
-                (haps, pos), targets = self.__data_generation(batch_indices)
-                return haps, pos, targets
 
-            def _map_fn(batch_indices):
-                haps, pos, targets = tf.py_function(
-                    func=_py_gen,
-                    inp=[batch_indices],
-                    Tout=[tf.float32, tf.float32, tf.float32],
+            ds = ds.map(_map_fn_pool, num_parallel_calls=tf.data.AUTOTUNE)
+
+            if repeat:
+                ds = ds.repeat()
+
+            ds = ds.prefetch(tf.data.AUTOTUNE)
+            return ds
+
+        # ----------------------------------------------------------------------
+        # Standard (non-pool-seq) path: two-stage pipeline with cache().
+        # ----------------------------------------------------------------------
+
+        # Pre-compute the fixed SNP dimension (after padding + frame border).
+        snp_dim = self.maxLen + 2 * self.frameWidth if self.maxLen is not None else None
+
+        # Stage 1 — per-sample loading, padding, value transformation, caching.
+        def _load_single_sample(idx):
+            idx = int(idx.numpy())
+            haps_i = np.load(os.path.join(self.treesDirectory, f"{idx}_haps.npy"))
+            pos_i = np.load(os.path.join(self.treesDirectory, f"{idx}_pos.npy"))
+            target_i = np.array([self.normalizedTargets[idx]], dtype=np.float32)
+
+            if self.realLinePos:
+                pos_i = pos_i / self.infoDir["ChromosomeLength"]
+
+            if self.sortInds:
+                haps_i = np.transpose(self.sort_min_diff(np.transpose(haps_i)))
+
+            if self.shuffleInds:
+                # NOTE: per-individual column shuffle is applied before caching,
+                # so it is frozen after the first epoch.  This is an acceptable
+                # trade-off for eliminating disk I/O on subsequent epochs.
+                haps_i = self.shuffleIndividuals(haps_i)
+
+            if self.maxLen is not None:
+                haps_out, pos_out = self.pad_HapsPos(
+                    [haps_i], [pos_i],
+                    maxSNPs=self.maxLen,
+                    frameWidth=self.frameWidth,
+                    center=self.center,
                 )
-                haps.set_shape([None, None, None])  # (batch, numSNPs+2*frameWidth, numSamps+2*frameWidth)
-                pos.set_shape([None, None])          # (batch, numSNPs+2*frameWidth)
-                targets.set_shape([None, 1])         # (batch, 1)
-                return (haps, pos), targets
+                haps_i = haps_out[0]
+                pos_i = pos_out[0]
 
-        ds = ds.map(_map_fn, num_parallel_calls=tf.data.AUTOTUNE)
+                pos_i = np.where(pos_i == -1.0, self.posPadVal, pos_i)
+                haps_i = np.where(haps_i < 1.0, self.ancVal, haps_i)
+                haps_i = np.where(haps_i > 1.0, self.padVal, haps_i)
+                haps_i = np.where(haps_i == 1.0, self.derVal, haps_i)
 
+            return haps_i.astype(np.float32), pos_i.astype(np.float32), target_i
+
+        def _map_load_sample(idx):
+            haps, pos, target = tf.py_function(
+                func=_load_single_sample,
+                inp=[idx],
+                Tout=[tf.float32, tf.float32, tf.float32],
+            )
+            haps.set_shape([snp_dim, None])  # (numSNPs+2*frameWidth, numSamps+2*frameWidth)
+            pos.set_shape([snp_dim])          # (numSNPs+2*frameWidth,)
+            target.set_shape([1])
+            return haps, pos, target
+
+        ds = tf.data.Dataset.from_tensor_slices(all_indices)
+        ds = ds.map(_map_load_sample, num_parallel_calls=tf.data.AUTOTUNE)
+
+        # Cache in RAM — lazy: populated on first epoch, served from RAM thereafter.
+        ds = ds.cache()
+
+        # Stage 2 — repeat, shuffle, batch, set_shape, prefetch.
         if repeat:
             ds = ds.repeat()
 
-        ds = ds.prefetch(tf.data.AUTOTUNE)
+        if self.shuffleExamples:
+            ds = ds.shuffle(buffer_size=numReps, reshuffle_each_iteration=True)
 
+        ds = ds.batch(self.batch_size)
+
+        def _finalize_batch(haps, pos, targets):
+            haps.set_shape([None, snp_dim, None])  # (batch, numSNPs+2*frameWidth, numSamps+2*frameWidth)
+            pos.set_shape([None, snp_dim])           # (batch, numSNPs+2*frameWidth)
+            targets.set_shape([None, 1])
+            return (haps, pos), targets
+
+        ds = ds.map(_finalize_batch, num_parallel_calls=tf.data.AUTOTUNE)
+        ds = ds.prefetch(tf.data.AUTOTUNE)
         return ds
 
     def shuffleIndividuals(self,x):
