@@ -345,8 +345,7 @@ def runModels(ModelFuncPointer,
     history = model.fit(TrainGenerator.to_dataset(repeat=True),
         steps_per_epoch=epochSteps,
         epochs=numEpochs,
-        validation_data=ValidationGenerator.to_dataset(repeat=True),
-        validation_steps=validationSteps,
+        validation_data=ValidationGenerator.to_dataset(repeat=False, shuffle=True),
         callbacks=callbacks_list)
 
     # Save the trained model
