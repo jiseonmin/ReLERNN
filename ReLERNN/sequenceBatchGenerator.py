@@ -308,6 +308,8 @@ class SequenceBatchGenerator:
                     inp=[batch_indices],
                     Tout=[tf.float32, tf.float32],
                 )
+                z.set_shape([None, None, None])  # (batch, numSNPs+2*frameWidth, 2)
+                targets.set_shape([None, 1])     # (batch, 1)
                 return z, targets
         else:
             # Standard path: __data_generation returns ((haps, pos), targets).
@@ -322,6 +324,9 @@ class SequenceBatchGenerator:
                     inp=[batch_indices],
                     Tout=[tf.float32, tf.float32, tf.float32],
                 )
+                haps.set_shape([None, None, None])  # (batch, numSNPs+2*frameWidth, numSamps+2*frameWidth)
+                pos.set_shape([None, None])          # (batch, numSNPs+2*frameWidth)
+                targets.set_shape([None, 1])         # (batch, 1)
                 return (haps, pos), targets
 
         ds = ds.map(_map_fn, num_parallel_calls=tf.data.AUTOTUNE)
