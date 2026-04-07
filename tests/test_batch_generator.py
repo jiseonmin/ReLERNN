@@ -242,3 +242,35 @@ class TestToDataset:
                 assert haps.shape[0] == pos.shape[0] == targets.shape[0]
                 assert haps.shape[1] == 50
                 assert pos.shape[1] == 50
+
+    def test_cache_produces_valid_batches_on_second_pass(self):
+        """Verify that iterating the dataset twice yields valid batches.
+
+        The second pass is served entirely from the in-memory cache.
+        """
+        import tensorflow as tf
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = _make_generator(tmpdir, n=32, nSamps=10, maxLen=50,
+                                  frameWidth=0)
+            ds = gen.to_dataset(repeat=False)
+
+            def _collect_shapes(dataset):
+                shapes = []
+                for (haps, pos), targets in dataset:
+                    shapes.append((haps.shape, pos.shape, targets.shape))
+                return shapes
+
+            # First pass — loads from disk and populates the cache.
+            shapes_pass1 = _collect_shapes(ds)
+            # Second pass — served entirely from RAM cache.
+            shapes_pass2 = _collect_shapes(ds)
+
+            assert len(shapes_pass1) > 0, "First pass produced no batches"
+            assert len(shapes_pass2) > 0, "Second pass produced no batches (cache broken)"
+            assert len(shapes_pass1) == len(shapes_pass2), (
+                "Number of batches differs between passes"
+            )
+            for (h1, p1, t1), (h2, p2, t2) in zip(shapes_pass1, shapes_pass2):
+                assert h1 == h2, f"haps shape mismatch: {h1} vs {h2}"
+                assert p1 == p2, f"pos shape mismatch: {p1} vs {p2}"
+                assert t1 == t2, f"targets shape mismatch: {t1} vs {t2}"
