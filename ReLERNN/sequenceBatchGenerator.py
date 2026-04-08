@@ -305,7 +305,7 @@ class SequenceBatchGenerator:
         do_shuffle = self.shuffleExamples if shuffle is None else shuffle
         numReps = self.infoDir["numReps"]
         all_indices = np.arange(numReps)
-
+        do_shuffle_inds = self.shuffleInds
         if self.seqD:
             # ------------------------------------------------------------------
             # Pool-seq path: stochastic resampling per epoch — skip cache().
@@ -347,7 +347,6 @@ class SequenceBatchGenerator:
 
         # Pre-compute the fixed SNP dimension (after padding + frame border).
         snp_dim = self.maxLen + 2 * self.frameWidth if self.maxLen is not None else None
-
         # Stage 1 — per-sample loading, padding, value transformation, caching.
         def _load_single_sample(idx):
             idx = int(idx.numpy())
