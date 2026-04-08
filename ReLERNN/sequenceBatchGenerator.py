@@ -274,7 +274,7 @@ class SequenceBatchGenerator:
         X, y = self.__data_generation(indices)
         return X,y
 
-    def to_dataset(self, repeat=True):
+    def to_dataset(self, repeat=True, shuffle=None):
         """Return a tf.data.Dataset for use with model.fit().
 
         Uses a two-stage pipeline with tf.data.cache() for lazy per-sample RAM
@@ -302,6 +302,7 @@ class SequenceBatchGenerator:
         Returns:
             A tf.data.Dataset that yields (X, y) batches.
         """
+        do_shuffle = self.shuffleExamples if shuffle is None else shuffle
         numReps = self.infoDir["numReps"]
         all_indices = np.arange(numReps)
 
@@ -312,7 +313,7 @@ class SequenceBatchGenerator:
             # ------------------------------------------------------------------
             ds = tf.data.Dataset.from_tensor_slices(all_indices)
 
-            if self.shuffleExamples:
+            if do_shuffle:
                 ds = ds.shuffle(buffer_size=numReps, reshuffle_each_iteration=True)
 
             ds = ds.batch(self.batch_size)
@@ -404,7 +405,7 @@ class SequenceBatchGenerator:
         if repeat:
             ds = ds.repeat()
 
-        if self.shuffleExamples:
+        if do_shuffle:
             ds = ds.shuffle(buffer_size=numReps, reshuffle_each_iteration=True)
 
         ds = ds.batch(self.batch_size)
