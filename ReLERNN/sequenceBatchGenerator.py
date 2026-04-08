@@ -361,11 +361,7 @@ class SequenceBatchGenerator:
             if self.sortInds:
                 haps_i = np.transpose(self.sort_min_diff(np.transpose(haps_i)))
 
-            if self.shuffleInds:
-                # NOTE: per-individual column shuffle is applied before caching,
-                # so it is frozen after the first epoch.  This is an acceptable
-                # trade-off for eliminating disk I/O on subsequent epochs.
-                haps_i = self.shuffleIndividuals(haps_i)
+            # Don't shuffle individuals here (apply after cache)
 
             if self.maxLen is not None:
                 haps_out, pos_out = self.pad_HapsPos(
@@ -414,6 +410,10 @@ class SequenceBatchGenerator:
             haps.set_shape([None, snp_dim, None])  # (batch, numSNPs+2*frameWidth, numSamps+2*frameWidth)
             pos.set_shape([None, snp_dim])           # (batch, numSNPs+2*frameWidth)
             targets.set_shape([None, 1])
+
+            if do_shuffle_inds:
+                # shuffle individual columns independently per sample in the batch (matching original __data_generation)
+                haps = tf.map_fn(lambda h: tf.gather(h, tf.random.shuffle(tf.range(tf.shape(h)[1])), axis=1), haps, )
             return (haps, pos), targets
 
         ds = ds.map(_finalize_batch, num_parallel_calls=tf.data.AUTOTUNE)
