@@ -286,11 +286,6 @@ class SequenceBatchGenerator:
 
         Stage 2: [repeat] → shuffle → batch → set_shape → prefetch
 
-        Note: shuffleInds (per-individual column shuffle) is applied before
-        caching, so it is frozen after epoch 1.  This is an acceptable
-        trade-off for eliminating repeated disk reads on HPC shared filesystems
-        (Lustre, GPFS, NFS).
-
         For the pool-seq path (seqD != None), caching is skipped because
         padAlleleFqs involves stochastic per-epoch resampling that must vary
         between epochs.
@@ -412,7 +407,16 @@ class SequenceBatchGenerator:
 
             if do_shuffle_inds:
                 # shuffle individual columns independently per sample in the batch (matching original __data_generation)
-                haps = tf.map_fn(lambda h: tf.gather(h, tf.random.shuffle(tf.range(tf.shape(h)[1])), axis=1), haps, )
+                batch_size = tf.shape(haps)[0]
+                n_inds = tf.shape(haps)[2]
+                # Random permutation per sample: shape (batch_size, n_inds)
+                shuffled_idx = tf.argsort(tf.random.uniform([batch_size, n_inds]), axis=1)
+                # Transpose to (batch_size, n_inds, snp_dim) so individuals are axis 1
+                haps = tf.transpose(haps, perm=[0, 2, 1])
+                # gather along axis 1 with batch_dims=1 (i.e. first dimension of haps, and shuffled_idx considered as batch dimension)
+                haps = tf.gather(haps, shuffled_idx, axis=1, batch_dims=1)
+                # Transpose back to (batch_size, snp_dim, n_inds)
+                haps = tf.transpose(haps, perm=[0, 2, 1])
             return (haps, pos), targets
 
         ds = ds.map(_finalize_batch, num_parallel_calls=tf.data.AUTOTUNE)
