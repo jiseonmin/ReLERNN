@@ -68,7 +68,6 @@ def main():
         'batchSize': 64,
         'maxLen': maxSegSites,
         'frameWidth': 5,
-        'shuffleInds':True,
         'sortInds':False,
         'center':False,
         'ancVal':-1,

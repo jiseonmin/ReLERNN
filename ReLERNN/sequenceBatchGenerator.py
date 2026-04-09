@@ -1,5 +1,6 @@
 '''
 Authors: Jared Galloway, Jeff Adrion
+Modified by J.Min
 '''
 
 from ReLERNN.imports import *
@@ -32,7 +33,6 @@ class SequenceBatchGenerator:
             maxLen=None,
             frameWidth=0,
             center=False,
-            shuffleInds=False,
             sortInds=False,
             ancVal = -1,
             padVal = -1,
@@ -56,7 +56,6 @@ class SequenceBatchGenerator:
         self.maxLen = maxLen
         self.frameWidth = frameWidth
         self.center = center
-        self.shuffleInds = shuffleInds
         self.sortInds=sortInds
         self.ancVal = ancVal
         self.padVal = padVal
@@ -300,7 +299,6 @@ class SequenceBatchGenerator:
         do_shuffle = self.shuffleExamples if shuffle is None else shuffle
         numReps = self.infoDir["numReps"]
         all_indices = np.arange(numReps)
-        do_shuffle_inds = self.shuffleInds
         if self.seqD:
             # ------------------------------------------------------------------
             # Pool-seq path: stochastic resampling per epoch — skip cache().
@@ -355,7 +353,6 @@ class SequenceBatchGenerator:
             if self.sortInds:
                 haps_i = np.transpose(self.sort_min_diff(np.transpose(haps_i)))
 
-            # Don't shuffle individuals here (apply after cache)
 
             if self.maxLen is not None:
                 haps_out, pos_out = self.pad_HapsPos(
@@ -405,29 +402,10 @@ class SequenceBatchGenerator:
             pos.set_shape([None, snp_dim])           # (batch, numSNPs+2*frameWidth)
             targets.set_shape([None, 1])
 
-            if do_shuffle_inds:
-                # shuffle individual columns independently per sample in the batch (matching original __data_generation)
-                batch_size = tf.shape(haps)[0]
-                n_inds = tf.shape(haps)[2]
-                # Random permutation per sample: shape (batch_size, n_inds)
-                shuffled_idx = tf.argsort(tf.random.uniform([batch_size, n_inds]), axis=1)
-                # Transpose to (batch_size, n_inds, snp_dim) so individuals are axis 1
-                haps = tf.transpose(haps, perm=[0, 2, 1])
-                # gather along axis 1 with batch_dims=1 (i.e. first dimension of haps, and shuffled_idx considered as batch dimension)
-                haps = tf.gather(haps, shuffled_idx, axis=1, batch_dims=1)
-                # Transpose back to (batch_size, snp_dim, n_inds)
-                haps = tf.transpose(haps, perm=[0, 2, 1])
-            return (haps, pos), targets
-
         ds = ds.map(_finalize_batch, num_parallel_calls=tf.data.AUTOTUNE)
         ds = ds.prefetch(tf.data.AUTOTUNE)
         return ds
 
-    def shuffleIndividuals(self,x):
-
-        t = np.arange(x.shape[1])
-        np.random.shuffle(t)
-        return x[:,t]
 
     def __data_generation(self, batchTreeIndices):
 
@@ -446,10 +424,6 @@ class SequenceBatchGenerator:
         if(self.sortInds):
             for i in range(len(haps)):
                 haps[i] = np.transpose(self.sort_min_diff(np.transpose(haps[i])))
-
-        if(self.shuffleInds):
-            for i in range(len(haps)):
-                haps[i] = self.shuffleIndividuals(haps[i])
 
         if self.seqD:
             # simulate pool-sequencing

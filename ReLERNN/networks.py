@@ -1,12 +1,28 @@
 '''
 Authors: Jeff Adrion, Andrew Kern, Jared Galloway
+Modified by J.Min
 '''
 
 from ReLERNN.imports import *
 
+def ShuffleIndividuals(keras.layers.Layer):
+    """
+    Randomly permutes individuals
+    Moved from data batch generation
+    """
+    def call(self, inputs):
+         batch_size = tf.shape(inputs)[0]
+         n_inds = tf.shape(inputs)[2]
+         shuffled_idx = tf.argsort(tf.random.uniform([batch_size, n_inds]), axis=1)
+         inputs = tf.transpose(inputs, perm=[0, 2, 1])
+         inputs = tf.gather(inputs, shuffled_idx, axis=1, batch_dims=1)
+         inputs = tf.transpose(inputs, perm=[0, 2, 1])
+         return inputs
+
 def GRU_TUNED84(x,y):
     '''
     Same as GRU_VANILLA but with dropout AFTER each dense layer.
+    First layer shuffles individual
     '''
 
     haps,pos = x
@@ -16,7 +32,10 @@ def GRU_TUNED84(x,y):
     numPos = pos[0].shape[0]
 
     genotype_inputs = layers.Input(shape=(numSNPs,numSamps))
-    model = layers.Bidirectional(layers.GRU(84,return_sequences=False))(genotype_inputs)
+
+    # additional layer - shuffling individuals
+    model = ShuffleIndividuals()(genotype_inputs)
+    model = layers.Bidirectional(layers.GRU(84,return_sequences=False))(model)
     model = layers.Dense(256)(model)
     model = layers.Dropout(0.35)(model)
 
@@ -69,7 +88,9 @@ def HOTSPOT_CLASSIFY(x,y):
     numPos = pos[0].shape[0]
 
     genotype_inputs = layers.Input(shape=(numSNPs,numSamps))
-    model = layers.Bidirectional(layers.GRU(84,return_sequences=False))(genotype_inputs)
+    # additional layer - shuffle individuals
+    model = ShuffleIndividuals()(genotype_inputs)
+    model = layers.Bidirectional(layers.GRU(84,return_sequences=False))(model)
     model = layers.Dense(256)(model)
     model = layers.Dropout(0.35)(model)
 
