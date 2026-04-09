@@ -401,6 +401,7 @@ class SequenceBatchGenerator:
             haps.set_shape([None, snp_dim, None])  # (batch, numSNPs+2*frameWidth, numSamps+2*frameWidth)
             pos.set_shape([None, snp_dim])           # (batch, numSNPs+2*frameWidth)
             targets.set_shape([None, 1])
+            return (haps, pos), targets
 
         ds = ds.map(_finalize_batch, num_parallel_calls=tf.data.AUTOTUNE)
         ds = ds.prefetch(tf.data.AUTOTUNE)
