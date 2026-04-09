@@ -5,11 +5,13 @@ Modified by J.Min
 
 from ReLERNN.imports import *
 
-def ShuffleIndividuals(keras.layers.Layer):
+class ShuffleIndividuals(keras.layers.Layer):
     """
     Randomly permutes individuals
     Moved from data batch generation
     """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
     def call(self, inputs):
          batch_size = tf.shape(inputs)[0]
          n_inds = tf.shape(inputs)[2]
