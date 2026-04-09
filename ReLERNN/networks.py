@@ -5,6 +5,7 @@ Modified by J.Min
 
 from ReLERNN.imports import *
 
+@keras.saving.register_keras_serializable(package='ReLERNN')
 class ShuffleIndividuals(keras.layers.Layer):
     """
     Randomly permutes individuals
