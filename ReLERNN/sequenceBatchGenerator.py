@@ -341,84 +341,95 @@ class SequenceBatchGenerator:
 
             ds = ds.prefetch(tf.data.AUTOTUNE)
             return ds
-
-        # ----------------------------------------------------------------------
-        # Standard (non-pool-seq) path: TFRecord if available, else per-sample .npy loading.
-        # ----------------------------------------------------------------------
+        # ------------------------------------------------------------------
+        # Standard path: TFRecord if available, else per-sample .npy loading
+        # ------------------------------------------------------------------
+        # ------------------------------------------------------------------
+        # Stage 1: load raw haps, pos, rho — source differs, output is same
+        # ------------------------------------------------------------------
         if use_tfrecord:
-            # Parse one TFRecord example
-        #######################################################
-        ## Continue from here $########
-        #############################
+            def _parse_tfrecord(serialized):
+                features = tf.io.parse_single_example(serialized, {
+                    'haps':       tf.io.VarLenFeature(tf.float32),
+                    'haps_shape': tf.io.VarLenFeature(tf.int64),
+                    'pos':        tf.io.VarLenFeature(tf.float32),
+                    'rho':        tf.io.VarLenFeature(tf.float32),
+                })
+                haps_shape = tf.cast(tf.sparse.to_dense(features['haps_shape']), tf.int32)
+                haps = tf.reshape(tf.sparse.to_dense(features['haps']), haps_shape)
+                pos  = tf.sparse.to_dense(features['pos'])
+                rho  = tf.reshape(tf.sparse.to_dense(features['rho']), [1])
+                return haps, pos, rho
 
-        # Pre-compute the fixed SNP dimension (after padding + frame border).
-        snp_dim = self.maxLen + 2 * self.frameWidth if self.maxLen is not None else None
-        # Stage 1 — per-sample loading, padding, value transformation, caching.
-        def _load_single_sample(idx):
-            idx = int(idx.numpy())
-            haps_i = np.load(os.path.join(self.treesDirectory, f"{idx}_haps.npy"))
-            pos_i = np.load(os.path.join(self.treesDirectory, f"{idx}_pos.npy"))
-            target_i = np.array([self.normalizedTargets[idx]], dtype=np.float32)
+            ds = tf.data.TFRecordDataset(tfrecord_path)
+            ds = ds.map(_parse_tfrecord, num_parallel_calls=tf.data.AUTOTUNE)
 
-            if self.realLinePos:
-                pos_i = pos_i / self.infoDir["ChromosomeLength"]
+        else:
+            all_indices = np.arange(numReps)
 
-            if self.sortInds:
-                haps_i = np.transpose(self.sort_min_diff(np.transpose(haps_i)))
+            def _load_npy(idx):
+                idx      = int(idx.numpy())
+                haps     = np.load(os.path.join(self.treesDirectory, f"{idx}_haps.npy"))
+                pos      = np.load(os.path.join(self.treesDirectory, f"{idx}_pos.npy"))
+                rho      = np.array([self.normalizedTargets[idx]], dtype=np.float32)
+                return haps.astype(np.float32), pos.astype(np.float32), rho
 
+            def _map_load_npy(idx):
+                haps, pos, rho = tf.py_function(
+                    func=_load_npy, inp=[idx],
+                    Tout=[tf.float32, tf.float32, tf.float32])
+                haps.set_shape([None, None])
+                pos.set_shape([None])
+                rho.set_shape([1])
+                return haps, pos, rho
 
-            if self.maxLen is not None:
-                haps_out, pos_out = self.pad_HapsPos(
-                    [haps_i], [pos_i],
-                    maxSNPs=self.maxLen,
-                    frameWidth=self.frameWidth,
-                    center=self.center,
-                )
-                haps_i = haps_out[0]
-                pos_i = pos_out[0]
+            ds = tf.data.Dataset.from_tensor_slices(all_indices)
+            ds = ds.map(_map_load_npy, num_parallel_calls=tf.data.AUTOTUNE)
 
-                pos_i = np.where(pos_i == -1.0, self.posPadVal, pos_i)
-                haps_i = np.where(haps_i < 1.0, self.ancVal, haps_i)
-                haps_i = np.where(haps_i > 1.0, self.padVal, haps_i)
-                haps_i = np.where(haps_i == 1.0, self.derVal, haps_i)
+        # ------------------------------------------------------------------
+        # Stage 2: transforms — identical for both paths
+        # ------------------------------------------------------------------
+        def _transform(haps, pos, rho):
+            def _np_transform(haps_np, pos_np):
+                haps_np = haps_np.numpy()
+                pos_np  = pos_np.numpy()
+                if self.realLinePos:
+                    pos_np = pos_np / self.infoDir["ChromosomeLength"]
+                if self.sortInds:
+                    haps_np = np.transpose(self.sort_min_diff(np.transpose(haps_np)))
+                if self.maxLen is not None:
+                    haps_out, pos_out = self.pad_HapsPos(
+                        [haps_np], [pos_np],
+                        maxSNPs=self.maxLen,
+                        frameWidth=self.frameWidth,
+                        center=self.center)
+                    haps_np = haps_out[0]
+                    pos_np  = pos_out[0]
+                    pos_np  = np.where(pos_np  == -1.0, self.posPadVal, pos_np)
+                    haps_np = np.where(haps_np <   1.0, self.ancVal,    haps_np)
+                    haps_np = np.where(haps_np >   1.0, self.padVal,    haps_np)
+                    haps_np = np.where(haps_np ==  1.0, self.derVal,    haps_np)
+                return haps_np.astype(np.float32), pos_np.astype(np.float32)
 
-            return haps_i.astype(np.float32), pos_i.astype(np.float32), target_i
+            haps, pos = tf.py_function(
+                func=_np_transform, inp=[haps, pos],
+                Tout=[tf.float32, tf.float32])
+            haps.set_shape([snp_dim, None])
+            pos.set_shape([snp_dim])
+            rho.set_shape([1])
+            return haps, pos, rho
 
-        def _map_load_sample(idx):
-            haps, pos, target = tf.py_function(
-                func=_load_single_sample,
-                inp=[idx],
-                Tout=[tf.float32, tf.float32, tf.float32],
-            )
-            haps.set_shape([snp_dim, None])  # (numSNPs+2*frameWidth, numSamps+2*frameWidth)
-            pos.set_shape([snp_dim])          # (numSNPs+2*frameWidth,)
-            target.set_shape([1])
-            return haps, pos, target
+        ds = ds.map(_transform, num_parallel_calls=tf.data.AUTOTUNE)
 
-        ds = tf.data.Dataset.from_tensor_slices(all_indices)
-        ds = ds.map(_map_load_sample, num_parallel_calls=tf.data.AUTOTUNE)
-
-        # Cache in RAM — lazy: populated on first epoch, served from RAM thereafter.
-        # Too much RAM usage - commenting out for now
-        # ds = ds.cache()
-
-        # Stage 2 — repeat, shuffle, batch, set_shape, prefetch.
+        # ------------------------------------------------------------------
+        # Stage 3: shuffle, repeat, batch, prefetch — shared
+        # ------------------------------------------------------------------
+        if do_shuffle:
+            ds = ds.shuffle(buffer_size=min(numReps, 2000), reshuffle_each_iteration=True)
         if repeat:
             ds = ds.repeat()
-
-        if do_shuffle:
-            # smaller buffer to reduce RAM usage
-            ds = ds.shuffle(buffer_size=1000, reshuffle_each_iteration=True)
-
         ds = ds.batch(self.batch_size)
-
-        def _finalize_batch(haps, pos, targets):
-            haps.set_shape([None, snp_dim, None])  # (batch, numSNPs+2*frameWidth, numSamps+2*frameWidth)
-            pos.set_shape([None, snp_dim])           # (batch, numSNPs+2*frameWidth)
-            targets.set_shape([None, 1])
-            return (haps, pos), targets
-
-        ds = ds.map(_finalize_batch, num_parallel_calls=tf.data.AUTOTUNE)
+        ds = ds.map(lambda h, p, t: ((h, p), t), num_parallel_calls=tf.data.AUTOTUNE)
         ds = ds.prefetch(tf.data.AUTOTUNE)
         return ds
 
