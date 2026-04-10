@@ -15,6 +15,8 @@ class SequenceBatchGenerator:
     Use ``to_dataset()`` to obtain a ``tf.data.Dataset`` pipeline with
     asynchronous prefetching for efficient GPU training.
 
+    Use TFRecord when available for faster data loading
+
     ``__getitem__`` and ``__len__`` are retained for backward compatibility
     (used by ReLERNN_BSCORRECT via batchGenerator.__getitem__(0)).
 
@@ -45,6 +47,7 @@ class SequenceBatchGenerator:
             maf = None,
             hotspots = False,
             seed = None,
+            useTFRecord = True, 
             **kwargs
             ):
 
@@ -69,6 +72,7 @@ class SequenceBatchGenerator:
         self.maf = maf
         self.hotspots = hotspots
         self.seed = seed
+        self.useTFRecord = useTFRecord
 
         if self.seed:
             os.environ['PYTHONHASHSEED']=str(self.seed)
@@ -275,35 +279,39 @@ class SequenceBatchGenerator:
 
     def to_dataset(self, repeat=True, shuffle=None):
         """Return a tf.data.Dataset for use with model.fit().
+        Use TFRecords which pre-padded and pre-normalized, if available.
+        If TFRecords is not avaiable, load .npy files and use a two-stage pipeline:
 
-        Uses a two-stage pipeline with tf.data.cache() for lazy per-sample RAM
-        caching (standard/non-pool-seq path only):
-
-        Stage 1: index → tf.py_function(load + pad single sample) → cache()
-            Epoch 1 loads lazily from disk as each sample is first accessed.
-            All subsequent epochs are served entirely from RAM with zero disk I/O.
+        Stage 1: index → tf.py_function(load + pad single sample)
 
         Stage 2: [repeat] → shuffle → batch → set_shape → prefetch
 
-        For the pool-seq path (seqD != None), caching is skipped because
-        padAlleleFqs involves stochastic per-epoch resampling that must vary
-        between epochs.
 
         Args:
             repeat: If True (default), the dataset repeats indefinitely so
                     Keras can iterate over it across epochs.
+            shuffle: If True or None, shuffle examples, if False, don't shuffle examples
 
         Returns:
             A tf.data.Dataset that yields (X, y) batches.
         """
         do_shuffle = self.shuffleExamples if shuffle is None else shuffle
         numReps = self.infoDir["numReps"]
-        all_indices = np.arange(numReps)
+        snp_dim = self.maxLen + 2 * self.frameWidth if self.maxLen is not None else None
+        tfrecord_path = os.path.join(self.treeDirectory, "data.tfrecord")
+        if self.useTFRecord and not os.path.exists(tfrecord.path):
+            raise FileNotFoundError(
+                    f"TFRecord file not found at {tfrecord_path}. "
+                    "Run npy_to_tfrecord.py first, or set useTFRecord=False to use .npy files directly."
+                    )
+        use_tfrecord = self.useTFRecord and os.path.exists(tfrecord.path)
+
         if self.seqD:
             # ------------------------------------------------------------------
             # Pool-seq path: stochastic resampling per epoch — skip cache().
             # Keep the original batch-level tf.py_function approach.
             # ------------------------------------------------------------------
+            all_indices = np.arange(numReps)
             ds = tf.data.Dataset.from_tensor_slices(all_indices)
 
             if do_shuffle:
@@ -335,8 +343,13 @@ class SequenceBatchGenerator:
             return ds
 
         # ----------------------------------------------------------------------
-        # Standard (non-pool-seq) path: two-stage pipeline with cache().
+        # Standard (non-pool-seq) path: TFRecord if available, else per-sample .npy loading.
         # ----------------------------------------------------------------------
+        if use_tfrecord:
+            # Parse one TFRecord example
+        #######################################################
+        ## Continue from here $########
+        #############################
 
         # Pre-compute the fixed SNP dimension (after padding + frame border).
         snp_dim = self.maxLen + 2 * self.frameWidth if self.maxLen is not None else None
@@ -386,14 +399,16 @@ class SequenceBatchGenerator:
         ds = ds.map(_map_load_sample, num_parallel_calls=tf.data.AUTOTUNE)
 
         # Cache in RAM — lazy: populated on first epoch, served from RAM thereafter.
-        ds = ds.cache()
+        # Too much RAM usage - commenting out for now
+        # ds = ds.cache()
 
         # Stage 2 — repeat, shuffle, batch, set_shape, prefetch.
         if repeat:
             ds = ds.repeat()
 
         if do_shuffle:
-            ds = ds.shuffle(buffer_size=numReps, reshuffle_each_iteration=True)
+            # smaller buffer to reduce RAM usage
+            ds = ds.shuffle(buffer_size=1000, reshuffle_each_iteration=True)
 
         ds = ds.batch(self.batch_size)
 
