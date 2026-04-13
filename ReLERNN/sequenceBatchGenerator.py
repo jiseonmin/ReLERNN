@@ -299,7 +299,7 @@ class SequenceBatchGenerator:
         numReps = self.infoDir["numReps"]
         snp_dim = self.maxLen + 2 * self.frameWidth if self.maxLen is not None else None
         tfrecord_path = os.path.join(self.treesDirectory, "data.tfrecord")
-        if self.useTFRecord and not os.path.exists(tfrecord.path):
+        if self.useTFRecord and not os.path.exists(tfrecord_path):
             raise FileNotFoundError(
                     f"TFRecord file not found at {tfrecord_path}. "
                     "Run npy_to_tfrecord.py first, or set useTFRecord=False to use .npy files directly."
