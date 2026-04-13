@@ -304,7 +304,7 @@ class SequenceBatchGenerator:
                     f"TFRecord file not found at {tfrecord_path}. "
                     "Run npy_to_tfrecord.py first, or set useTFRecord=False to use .npy files directly."
                     )
-        use_tfrecord = self.useTFRecord and os.path.exists(tfrecord.path)
+        use_tfrecord = self.useTFRecord and os.path.exists(tfrecord_path)
 
         if self.seqD:
             # ------------------------------------------------------------------
