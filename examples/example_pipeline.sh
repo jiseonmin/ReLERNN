@@ -26,8 +26,8 @@ ${SIMULATE} \
 # Train network
 ${TRAIN} \
     --projectDir ${DIR} \
-    --seed ${SEED}
-
+    --seed ${SEED} \
+    --useTFRecord False
 # Predict
 ${PREDICT} \
     --vcf ${VCF} \

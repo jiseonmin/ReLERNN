@@ -15,6 +15,7 @@ def main():
     parser.add_argument('-t','--nCPU',dest='nCPU',help='Number of CPUs to use',type=int,default=1)
     parser.add_argument('-s','--seed',dest='seed',help='Random seed',type=int,default=None)
     parser.add_argument('--gpuID',dest='gpuID',help='Identifier specifying which GPU to use', type=int, default=0)
+    parser.add_argument('--useTFRecord', dest='useTFRecord', help='convert .npy simulation output to TFrecord for efficiency', default=True)
     args = parser.parse_args()
     
     
@@ -77,6 +78,7 @@ def main():
         'posPadVal':0,
         'seqD':None,
         'seed':args.seed,
+        'useTFRecord':args.useTFRecord,
               }
 
 
