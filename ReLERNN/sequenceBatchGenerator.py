@@ -298,7 +298,7 @@ class SequenceBatchGenerator:
         do_shuffle = self.shuffleExamples if shuffle is None else shuffle
         numReps = self.infoDir["numReps"]
         snp_dim = self.maxLen + 2 * self.frameWidth if self.maxLen is not None else None
-        tfrecord_path = os.path.join(self.treeDirectory, "data.tfrecord")
+        tfrecord_path = os.path.join(self.treesDirectory, "data.tfrecord")
         if self.useTFRecord and not os.path.exists(tfrecord.path):
             raise FileNotFoundError(
                     f"TFRecord file not found at {tfrecord_path}. "
