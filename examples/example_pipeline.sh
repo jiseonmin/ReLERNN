@@ -27,7 +27,7 @@ ${SIMULATE} \
 ${TRAIN} \
     --projectDir ${DIR} \
     --seed ${SEED} \
-    --useTFRecord False
+    --noTFRecord
 # Predict
 ${PREDICT} \
     --vcf ${VCF} \
