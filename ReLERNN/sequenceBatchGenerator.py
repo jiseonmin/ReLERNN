@@ -314,6 +314,8 @@ class SequenceBatchGenerator:
             all_indices = np.arange(numReps)
             ds = tf.data.Dataset.from_tensor_slices(all_indices)
 
+            if repeat:
+                ds = ds.repeat()
             if do_shuffle:
                 ds = ds.shuffle(buffer_size=numReps, reshuffle_each_iteration=True)
 
@@ -336,8 +338,6 @@ class SequenceBatchGenerator:
 
             ds = ds.map(_map_fn_pool, num_parallel_calls=tf.data.AUTOTUNE)
 
-            if repeat:
-                ds = ds.repeat()
 
             ds = ds.prefetch(tf.data.AUTOTUNE)
             return ds
@@ -424,10 +424,10 @@ class SequenceBatchGenerator:
         # ------------------------------------------------------------------
         # Stage 3: shuffle, repeat, batch, prefetch — shared
         # ------------------------------------------------------------------
-        if do_shuffle:
-            ds = ds.shuffle(buffer_size=min(numReps, 2000), reshuffle_each_iteration=True)
         if repeat:
             ds = ds.repeat()
+        if do_shuffle:
+            ds = ds.shuffle(buffer_size=min(numReps, 2000), reshuffle_each_iteration=True)
         ds = ds.batch(self.batch_size)
         ds = ds.map(lambda h, p, t: ((h, p), t), num_parallel_calls=tf.data.AUTOTUNE)
         ds = ds.prefetch(tf.data.AUTOTUNE)
