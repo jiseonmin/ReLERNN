@@ -16,7 +16,7 @@ def main():
     parser.add_argument('-s','--seed',dest='seed',help='Random seed',type=int,default=None)
     parser.add_argument('--gpuID',dest='gpuID',help='Identifier specifying which GPU to use', type=int, default=0)
     parser.add_argument('--useTFRecord', dest='useTFRecord', action='store_true', default=True, help='Use TFRecord files (default)')
-parser.add_argument('--noTFRecord', dest='useTFRecord', action='store_false', help='Use .npy files directly instead of TFRecord')
+    parser.add_argument('--noTFRecord', dest='useTFRecord', action='store_false', help='Use .npy files directly instead of TFRecord')
     args = parser.parse_args()
     
     
