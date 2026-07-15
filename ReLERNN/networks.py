@@ -58,7 +58,7 @@ def GRU_TUNED84(x,y):
     #----------------------------------------------------
 
     model = Model(inputs=[genotype_inputs,position_inputs], outputs=[output])
-    model.compile(optimizer='Adam(clipnorm=1.0)', loss='mse', jit_compile=False)
+    model.compile(optimizer=Adam(clipnorm=1.0), loss='mse', jit_compile=False)
     model.summary()
 
     return model
